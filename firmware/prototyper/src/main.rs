@@ -6,6 +6,7 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+mod atfield;
 mod cfg;
 mod devicetree;
 mod driver;
@@ -113,6 +114,13 @@ fn enable_supervisor_services() {
         .expect("SBI dispatcher not initialized");
     // Publish the SBI policy after configuring the next-stage environment.
     trap::init(dispatcher).expect("BUG: failed to activate Runtime trap handling");
+
+    // AT FIELD START
+    // 固件已完全就绪、下一阶段尚未开始：逐 hart 调一次外部 TSM（独立镜像）。
+    // AT Field 自己保存/恢复调用者上下文并正常返回，不触碰任何 CSR。
+    atfield::hart_init();
+    info!("AT Field returned control to the firmware");
+    // AT FIELD END
 }
 
 fn log_hart_capabilities(hart_id: usize) {
