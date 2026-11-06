@@ -72,7 +72,7 @@ fn boot_hart(mut boot: BootInfo) {
     hart::stage_boot_handoff(next_stage)
         .expect("BUG: boot hart could not stage its initial handoff");
 
-    enable_supervisor_services();
+    enable_supervisor_services(true);
 }
 
 fn secondary_hart(boot: Option<&BootInfo>) {
@@ -86,10 +86,10 @@ fn secondary_hart(boot: Option<&BootInfo>) {
     let next_mode = boot.map_or(MPP::Supervisor, |boot| boot.next_stage().next_mode);
     check_next_stage_privilege(next_mode);
 
-    enable_supervisor_services();
+    enable_supervisor_services(false);
 }
 
-fn enable_supervisor_services() {
+fn enable_supervisor_services(is_boot_hart: bool) {
     // Gate per-hart IMSIC setup on the device selected during platform
     // initialization, not on AIA discovery alone.
     if matches!(
@@ -118,8 +118,7 @@ fn enable_supervisor_services() {
     // AT FIELD START
     // 固件已完全就绪、下一阶段尚未开始：逐 hart 调一次外部 TSM（独立镜像）。
     // AT Field 自己保存/恢复调用者上下文并正常返回，不触碰任何 CSR。
-    atfield::hart_init();
-    info!("AT Field returned control to the firmware");
+    atfield::hart_init(is_boot_hart);
     // AT FIELD END
 }
 
