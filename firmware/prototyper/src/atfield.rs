@@ -18,6 +18,23 @@ const ATFIELD_ENTRY: usize = 0x1_0000_0000;
 const ROLE_PRIMARY: usize = 0;
 const ROLE_SECONDARY: usize = 1;
 
+/// 交给 AT Field 的下一阶段 FDT 地址（`a2`）。
+///
+/// 传的是**下一阶段那份**——固件已经打好补丁、准备交给 S 模式的那份（带
+/// `/reserved-memory` 与固件镜像预留），不是 SPL 交来的原件。AT Field 要从里面
+/// 读机密区边界，所以只能认这一份。
+///
+/// 存成全局而不是参数：AT Field 每个 hart 都要拿同一个值，而 secondary hart
+/// 的 `BootInfo` 里没有这个运行期地址（它只由 boot hart 在 `init_board()` 后
+/// 得到）。由 boot hart `store`、secondary 在 `PRIMARY_DONE` 之后 `load`，
+/// 靠 `PRIMARY_DONE` 的 release/acquire 建立 happens-before。
+static NEXT_STAGE_FDT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+/// 由 boot hart 在 `init_board()` 之后调用（见 `main.rs` 的 `boot_hart`）。
+pub(crate) fn set_next_stage_fdt(address: usize) {
+    NEXT_STAGE_FDT.store(address, core::sync::atomic::Ordering::Release);
+}
+
 /// boot hart 已完成 AT Field 的全局初始化。
 ///
 /// 顺序契约：**secondary hart 必须等 boot hart 的 primary 初始化完成后再进来**。
@@ -38,7 +55,8 @@ static SECONDARY_SERIAL: spin::Mutex<()> = spin::Mutex::new(());
 
 /// 调用 AT Field 的每 hart 初始化入口。
 ///
-/// 调用约定：`a0` = 硬件 hartid，`a1` = 角色（0 = boot hart，1 = 其它）；
+/// 调用约定：`a0` = 硬件 hartid，`a1` = 角色（0 = boot hart，1 = 其它），
+/// `a2` = 下一阶段 FDT 物理地址（0 表示未知）；
 /// 返回后不破坏调用者保存的寄存器（AT Field 会恢复 `ra`/`sp`/`gp`/`s0`），
 /// 因此可以直接继续执行。
 ///
@@ -64,13 +82,15 @@ pub(crate) fn hart_init(is_boot_hart: bool) {
     // SAFETY: 该地址由 AT Field 的链接脚本固定为镜像入口，镜像由 QEMU 的
     // loader（`-device loader,file=...,addr=0x100000000`）预先装入。
     // 入口遵循 C ABI 并且会正常返回。
-    let entry: extern "C" fn(usize, usize) = unsafe { core::mem::transmute(ATFIELD_ENTRY) };
+    let entry: extern "C" fn(usize, usize, usize) = unsafe { core::mem::transmute(ATFIELD_ENTRY) };
     let role = if is_boot_hart {
         ROLE_PRIMARY
     } else {
         ROLE_SECONDARY
     };
-    entry(hart_id, role);
+    // Acquire 与 boot hart 的 Release 配对（这里也可能读到 boot hart 自己写的值）。
+    let fdt = NEXT_STAGE_FDT.load(core::sync::atomic::Ordering::Acquire);
+    entry(hart_id, role, fdt);
 
     // 调试用：先把这行日志（共用同一个 16550）打完，再放 secondary hart 进来，
     // 否则 boot hart 的日志会和 secondary 的首次打印抢 THR（会丢字节）。

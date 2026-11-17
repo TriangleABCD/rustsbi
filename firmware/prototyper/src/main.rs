@@ -48,6 +48,10 @@ fn boot_hart(mut boot: BootInfo) {
         .take_platform_description()
         .expect("BUG: boot hart entered without a validated Platform Description");
     let next_stage_fdt_address = platform::init_board(platform_description);
+    // 立刻发布给 AT Field：它每个 hart 都要读同一份（下一阶段的、已打补丁的）FDT。
+    // 在 `enable_supervisor_services(true)` 之前存，才能保证 secondary hart 在
+    // `PRIMARY_DONE` 之后读到的一定是这个值。
+    atfield::set_next_stage_fdt(next_stage_fdt_address);
 
     let firmware_ram = platform::firmware_ram_range();
     firmware::set_pmp(&firmware_ram);
