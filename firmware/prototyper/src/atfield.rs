@@ -10,9 +10,10 @@
 
 /// AT Field 入口的物理地址。
 ///
-/// 4 GiB QEMU `virt` 的 RAM 是 `0x8000_0000..0x1_8000_0000`，取后半段起点作为
-/// 机密内存与 TSM 的装载地址。**必须与 AT Field 的 `linker.ld` 保持一致**。
-const ATFIELD_ENTRY: usize = 0x1_0000_0000;
+/// QEMU `virt` 用 `-m 8G` 时 RAM 是 `0x8000_0000..0x2_8000_0000`；机密区取**高 4 GiB**
+/// （`0x1_8000_0000..0x2_8000_0000`），TSM 就装在它的起点。
+/// **必须与 AT Field 的 `linker.ld`（`_conf_start`）保持一致**。
+const ATFIELD_ENTRY: usize = 0x1_8000_0000;
 
 /// `a1` 的角色取值，必须与 AT Field 的 `src/start.S` 一致。
 const ROLE_PRIMARY: usize = 0;

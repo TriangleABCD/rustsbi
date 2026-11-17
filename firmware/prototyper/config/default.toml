@@ -6,6 +6,14 @@ payload_address = 0x80200000
 jump_address = 0x80200000
 tlb_flush_limit = 16384 # page_size * 4
 
+# 下一阶段 FDT 的落点：**必须放在机密区外**（宿主与 S 模式都要读它）。
+# 这里取「紧贴机密区下方、与它零间隙」——紧凑布局，高位不留空洞：
+#   [0x1_7FF8_0000, 0x1_8000_0000) 512 KiB，机密区从 0x1_8000_0000 起。
+# 不设的话，QEMU 会把 DTB 放在 RAM 顶下方 2 MiB（0x2_7FE0_0000），恰好落在
+# AT Field 的机密区里面，宿主就永远读不到设备树了。
+fdt_handoff_address = 0x17ff80000
+fdt_handoff_capacity = 0x80000
+
 [[next_addr]]
 start = 0x20000000
 end = 0x24000000
